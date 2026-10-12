@@ -5,7 +5,8 @@
 > 让你**不翻墙**、**合法地**顺畅访问 GitHub —— 解决 DNS 污染、IP 封锁导致的打不开、加载慢、`git clone` 失败等问题。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
+[![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-green)]()
 
 ---
 
@@ -24,6 +25,10 @@
 ---
 
 ## 快速开始
+
+提供 **Windows** 和 **Linux / macOS** 两个版本，功能完全一致。
+
+### Windows
 
 **下载两个文件，放同一个目录，双击运行：**
 
@@ -44,6 +49,33 @@
 > ```powershell
 > powershell -ExecutionPolicy Bypass -File fix-github-fast.ps1
 > ```
+
+### Linux / macOS
+
+```bash
+# 下载后赋予执行权限
+chmod +x fix-github-linux.sh
+
+# 运行（需要 root，因为要改 /etc/hosts）
+sudo ./fix-github-linux.sh
+```
+
+脚本会自动完成：
+
+- 并行扫描 IP（并发度按 CPU 核数动态调整，最高 256）
+- 按服务分别验证可用性（`api` 优先 `.6` 尾号、`codeload` 优先 `.9` 尾号）
+- 备份 `/etc/hosts` 后写入新配置
+- 自动识别并刷新 DNS 缓存（`resolvectl` / `systemd-resolve` / `nscd` / `dscacheutil`）
+
+**耗时约 30~60 秒** —— Linux 的并行能力比 Windows 更强，所以更快。
+
+> 依赖：`bash` 4+ 和 `curl`（几乎所有发行版都自带）
+
+**恢复原状：**
+
+```bash
+sudo cp /etc/hosts.bak-20261012-153000 /etc/hosts
+```
 
 ---
 
@@ -221,7 +253,10 @@ A：只修改 `hosts` 文件，不改动系统其他设置。每次运行都会�
 A：`git clone` 同时依赖 `github.com`（取 refs）和 `codeload.github.com`（下载 pack），任一不通都会失败。脚本已经为它们分别挑选了合适的 IP，但如果是 SNI 阻断（第三种封锁），就需要代理了。
 
 **Q：macOS / Linux 能用吗？**
-A：脚本是 Windows 专用的（PowerShell + hosts 路径）。其他系统可以参考上面的"[手动方案](#不用脚本的手动方案)"。
+A：**能**，已提供 Bash 版本 [`fix-github-linux.sh`](fix-github-linux.sh)，用法见[快速开始](#linux--macos)。脚本会自动适配 Linux 和 macOS 的 DNS 刷新方式。
+
+**Q：Linux 版和 Windows 版有什么区别？**
+A：原理完全一致（并行扫描 → 按服务验证 → 写 hosts → 刷 DNS）。区别只有实现方式：Linux 版用 `/dev/tcp` + `xargs -P` 并行探测，并发度按 CPU 核数自动调整，因此**更快（约 30~60 秒）**。Windows 版用 .NET `TcpClient` 异步连接。
 
 ---
 
@@ -243,9 +278,24 @@ Copy-Item C:\Windows\System32\drivers\etc\hosts.bak-1012-153000 C:\Windows\Syste
 
 ## 环境要求
 
+**Windows**
+
 - Windows 10 / 11
 - PowerShell 5.1（系统自带）或更高
 - `curl.exe`（Windows 10 1803+ 已内置）
+
+**Linux**
+
+- 任意主流发行版（Debian / Ubuntu / CentOS / Arch ...）
+- `bash` 4.0+
+- `curl`
+- `coreutils`（提供 `seq`、`nproc`、`timeout`）与 `findutils`（提供 `xargs -P`）—— 默认都有
+
+**macOS**
+
+- macOS 10.15+
+- 系统自带的 `bash` 3.2 也基本可用（推荐 `brew install bash` 升级到 4+）
+- `curl`（系统自带）
 
 ---
 
