@@ -186,13 +186,20 @@ sudo systemd-resolve --flush-caches
 镜像：https://gcore.jsdelivr.net/gh/用户名/仓库@分支/文件路径
 ```
 
-**实测可用的 jsDelivr 节点：**
+**jsDelivr 各节点（可用性会随时间波动，建议多试几个）：**
 
-| 节点 | 可用性 |
+| 节点 | 说明 |
 |---|---|
-| `gcore.jsdelivr.net` | ✅ 可用 |
-| `fastly.jsdelivr.net` | ⚠️ 常失败 |
-| `cdn.jsdelivr.net` | ⚠️ 常失败 |
+| `gcore.jsdelivr.net` | 最常用，但也会周期性失效 |
+| `fastly.jsdelivr.net` | 备用节点 |
+| `testingcf.jsdelivr.net` | 备用节点 |
+| `cdn.jsdelivr.net` | 官方主节点，国内常不可用 |
+
+> ⚠️ **jsDelivr 本身在国内也不是 100% 稳定** —— 实测它会整体周期性失效（所有节点同时 000）。
+> 如果全部节点都不通，可以：
+> 1. 直接用 GitHub 网页打开文件 → 点右上角 **Raw** 按钮
+> 2. 或试试 [Statically](https://statically.io/) 这类同类 CDN
+> 3. 或等几分钟再试（通常会自动恢复）
 
 ---
 
