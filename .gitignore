@@ -1,0 +1,8 @@
+# hosts 备份
+hosts.bak*
+*.bak-*
+# 日志与临时文件
+*.log
+*.tmp
+Thumbs.db
+desktop.ini
