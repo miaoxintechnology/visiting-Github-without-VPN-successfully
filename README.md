@@ -1,4 +1,6 @@
-# 不翻墙成功访问 GitHub
+# visiting-Github-without-VPN-successfully
+
+不翻墙成功访问 GitHub
 
 > 让你**不翻墙**、**合法地**顺畅访问 GitHub —— 解决 DNS 污染、IP 封锁导致的打不开、加载慢、`git clone` 失败等问题。
 
