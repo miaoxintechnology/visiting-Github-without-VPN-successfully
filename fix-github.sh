@@ -77,12 +77,20 @@ good "TCP 443 可达：$TCP_COUNT 个 IP"
 [[ "$TCP_COUNT" -eq 0 ]] && { fail "没有 IP 可达，网络可能中断"; exit 1; }
 
 # ---------- 2. 检测函数 ----------
+# ★ 关键：github.com 必须测「深层路径」，只测根路径会选到
+#   「根路径 200 但深层路径 404」的坏 IP（实测 140.82.112.2 就是这种）
+test_path() {
+    case "$1" in
+        github.com|www.github.com) echo "/octocat" ;;
+        *) echo "/" ;;
+    esac
+}
 # 带 SNI 测试（严格 >=2/3）
 test_with_sni() {
     local host="$1" ip="$2" ok=0 bad=0 code
     for _ in 1 2 3; do
         code=$(curl -s -o /dev/null -w '%{http_code}' --resolve "${host}:443:${ip}" \
-               --connect-timeout 1 --max-time 2 "https://${host}" 2>/dev/null)
+               --connect-timeout 1 --max-time 2 "https://${host}$(test_path "$host")" 2>/dev/null)
         if [[ "$code" == "200" || "$code" == "301" ]]; then
             ok=$((ok+1)); [[ $ok -ge 2 ]] && return 0
         else
@@ -97,7 +105,7 @@ test_no_sni() {
     local ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36'
     for _ in 1 2 3; do
         code=$(curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 \
-               "https://${ip}/" -H "Host: ${host}" -H "User-Agent: ${ua}" 2>/dev/null)
+               "https://${ip}$(test_path "$host")" -H "Host: ${host}" -H "User-Agent: ${ua}" 2>/dev/null)
         if [[ "$code" == "200" || "$code" == "301" ]]; then
             ok=$((ok+1)); [[ $ok -ge 2 ]] && return 0
         else
@@ -325,7 +333,7 @@ for h in "${VERIFY_HOSTS[@]}"; do
     TOTAL=$((TOTAL+1))
     extra=""
     [[ "${MODE[$h]:-}" == "proxy" ]] && extra="--ssl-no-revoke"
-    ok=$(verify_service "https://$h" "$extra")
+    ok=$(verify_service "https://$h$(test_path "$h")" "$extra")
     if [[ $ok -ge 2 ]]; then
         good "  $h : $ok/3 ✅"; PASS=$((PASS+1))
     else

@@ -88,11 +88,17 @@ Good "TCP 443 可达：$($tcpLive.Count) 个 IP"
 if ($tcpLive.Count -eq 0) { Fail '没有 IP 可达，网络可能中断'; if (-not $NoPause) { Read-Host '按回车退出' }; exit 1 }
 
 # ---------- 3. 检测函数 ----------
+# ★ 关键：github.com 必须测「深层路径」，只测根路径会选到
+#   「根路径返回200但深层路径404」的坏 IP（实测 140.82.112.2 就是这种）
+function Get-TestPath($hostname) {
+    if ($hostname -eq 'github.com' -or $hostname -eq 'www.github.com') { return '/octocat' }
+    return '/'
+}
 # 带 SNI 测试：严格 >=2/3（用户要求）
 function Test-WithSNI($hostname, $ip) {
     $ok = 0; $bad = 0
     for ($r = 1; $r -le 3; $r++) {
-        $o = curl.exe -s -o NUL -w '%{http_code}' --resolve "${hostname}:443:$ip" --connect-timeout 1 --max-time 2 "https://$hostname" 2>$null
+        $o = curl.exe -s -o NUL -w '%{http_code}' --resolve "${hostname}:443:$ip" --connect-timeout 1 --max-time 2 "https://$hostname$(Get-TestPath $hostname)" 2>$null
         if ($o -eq '200' -or $o -eq '301') { $ok++; if ($ok -ge 2) { return $true } }
         else { $bad++; if ($bad -ge 2) { return $false } }
     }
@@ -103,7 +109,7 @@ function Test-NoSNI($hostname, $ip) {
     $ok = 0; $bad = 0
     $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36'
     for ($r = 1; $r -le 3; $r++) {
-        $o = curl.exe -k -s -o NUL -w '%{http_code}' --connect-timeout 1 --max-time 2 "https://$ip/" -H "Host: $hostname" -H "User-Agent: $ua" 2>$null
+        $o = curl.exe -k -s -o NUL -w '%{http_code}' --connect-timeout 1 --max-time 2 "https://$ip$(Get-TestPath $hostname)" -H "Host: $hostname" -H "User-Agent: $ua" 2>$null
         if ($o -eq '200' -or $o -eq '301') { $ok++; if ($ok -ge 2) { return $true } }
         else { $bad++; if ($bad -ge 2) { return $false } }
     }
@@ -328,7 +334,7 @@ $verifyServices = @($services) + @(@{ Host = 'www.github.com' })
 foreach ($svc in $verifyServices) {
     $h = $svc.Host
     $useNoRevoke = ($state[$h].Mode -eq 'proxy')
-    $ok = Verify-Service "https://$h" $useNoRevoke
+    $ok = Verify-Service "https://$h$(Get-TestPath $h)" $useNoRevoke
     if ($ok -ge 2) { Good "  $h : $ok/3 ✅" } else { Warn "  $h : $ok/3 ❌"; $finalPass = $false }
 }
 
