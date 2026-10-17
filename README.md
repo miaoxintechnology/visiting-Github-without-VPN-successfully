@@ -218,6 +218,26 @@ A：如果脚本为 `github.com` 启用了代理，**需要**。hosts 指向 `12
 **Q：会有什么副作用吗？**
 A：只改 `hosts` + 导入一张仅用于本地代理的自签证书 + 启动本地代理。不改动系统其他设置，每次运行都自动备份 `hosts`。
 
+**Q：修复后 `git push` 报 `Permission denied (publickey)` 或 `Connection refused`？**
+A：这是**已知的副作用**。修复后 hosts 把 `github.com` 指向了本地代理（`127.0.0.1`），而代理只监听 **443 端口**；而 SSH 协议走的是 **22 端口**，所以会被 hosts 拦到本地、却没有服务监听 22 端口。
+
+**解决**：改用 HTTPS 协议（走 443，代理支持）：
+
+```bash
+git remote set-url origin https://github.com/用户名/仓库.git
+git push
+```
+
+HTTPS 需要 Personal Access Token（GitHub 已不支持密码登录）：`Settings → Developer settings → Personal access tokens`。
+
+> 想继续用 SSH 的话，可以在 `~/.ssh/config` 里把 HostName 固定成一个真实 IP（绕过 hosts），例如：
+> ```
+> Host github.com
+>     HostName 140.82.112.4
+>     User git
+> ```
+> 但那个 IP 失效后需要更新。
+
 **Q：怎么确认是 SNI 阻断还是 IP 封锁？**
 A：用上面的「同一 IP 不同 SNI」测试法。通一个不通另一个就是 SNI 阻断。
 
