@@ -192,7 +192,9 @@ curl --resolve api.github.com:443:140.82.121.6    https://api.github.com   # 能
 | `fix-github.ps1` | **Windows 主脚本**（SNI 检测 + 自动配代理 + 严格验证） |
 | `fix-github.sh` | **Linux/macOS 主脚本** |
 | `proxy.js` | 本地 SNI 剥离代理（Node.js，两平台共用） |
-| `快速修复GitHub.bat` / `fix-github.bat` | Windows 双击启动器（自动提权） |
+| `快速修复GitHub.bat` / `fix-github.bat` | Windows 双击修复启动器（自动提权） |
+| **`uninstall.ps1`** / **`一键回滚.bat`** | **Windows 一键回滚**（撤销所有改动） |
+| **`uninstall.sh`** | **Linux/macOS 一键回滚** |
 | `install-desktop.sh` | Linux 桌面启动器安装脚本（生成 .desktop 到桌面+应用菜单） |
 | `GitHub-自动修复.desktop` | Linux 便携版启动器（`%k` 自定位，可随文件夹移动） |
 | `LICENSE` | MIT |
@@ -221,22 +223,66 @@ A：用上面的「同一 IP 不同 SNI」测试法。通一个不通另一个�
 
 ---
 
-## 恢复原状
+## 一键回滚（撤销所有改动）
+
+不想用了？运行回滚脚本即可**彻底撤销所有改动**，系统恢复原状：
 
 **Windows**
 
 ```powershell
-# 还原 hosts 备份
+# 双击 一键回滚.bat，或：
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+**Linux / macOS**
+
+```bash
+chmod +x uninstall.sh
+sudo ./uninstall.sh
+```
+
+### 回滚会做什么
+
+| 步骤 | Windows | Linux / macOS |
+|---|---|---|
+| ① 停止本地代理进程 | ✅ 结束监听 443 的 node | ✅ 同左 |
+| ② 删除受信任的证书 | ✅ 从受信任的根证书颁发机构删除 | ✅ 系统 CA 库 + NSS |
+| ③ 清理 hosts | ✅ 删除所有 GitHub 相关行（**保留其他配置**） | ✅ 同左 |
+| ④ 删除配置文件 | ✅ pfx / cer / 配置 / 日志 | ✅ 同左 |
+| ⑤ 删除桌面启动器 | — | ✅ 桌面 + 应用菜单 |
+| ⑥ 刷新 DNS 缓存 | ✅ | ✅ |
+
+**特点**
+
+- **只删自己加的东西**——其他 hosts 条目（软件授权、内网域名等）一律保留
+- **可重复运行**（幂等），跑两次也不会出问题
+- 操作前自动备份 hosts（`hosts.bak-uninstall-MMdd-HHmmss`）
+- 完成后自动验证并报告结果
+
+> ⚠️ **回滚后 GitHub 会恢复为「无法访问」的原始状态** —— 这是预期行为，因为所有绕过措施（hosts 映射 + 本地代理 + 证书）都已移除。想再次修复时重新运行 `fix-github.ps1` / `fix-github.sh` 即可。
+
+### 手动回滚（脚本不可用时）
+
+**Windows**
+
+```powershell
+# 1. 还原 hosts 备份
 Copy-Item C:\Windows\System32\drivers\etc\hosts.bak-1017-153000 C:\Windows\System32\drivers\etc\hosts -Force
 
-# 删除本地代理证书（可选）
+# 2. 删除本地代理证书
 Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -eq 'CN=Local GitHub Proxy' } | Remove-Item -Force
+
+# 3. 停代理 + 刷 DNS
+Get-NetTCPConnection -LocalPort 443 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+ipconfig /flushdns
 ```
 
 **Linux / macOS**
 
 ```bash
 sudo cp /etc/hosts.bak-20261017-153000 /etc/hosts
+sudo rm -f /usr/local/share/ca-certificates/local-github-proxy.crt && sudo update-ca-certificates --fresh
+sudo pkill -f 'proxy.js'
 ```
 
 ---

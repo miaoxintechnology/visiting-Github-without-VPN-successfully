@@ -1,8 +1,16 @@
 # hosts 备份
 hosts.bak*
 *.bak-*
-# 日志与临时文件
+
+# 运行时生成（不应提交）
+proxy-config.json
+proxy-cert.pfx
+proxy-cert.cer
+cert.pem
+key.pem
 *.log
-*.tmp
+
+# 系统文件
 Thumbs.db
 desktop.ini
+.DS_Store
