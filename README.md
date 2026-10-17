@@ -47,6 +47,33 @@ sudo ./fix-github.sh
 sudo ./fix-github.sh --proxy
 ```
 
+#### 图形界面启动器（可选）
+
+想在桌面双击运行，有两种方式：
+
+**方式 1：一键安装（推荐）**
+
+```bash
+chmod +x install-desktop.sh
+./install-desktop.sh
+```
+
+会自动生成 `.desktop` 启动器并安装到**桌面**和**应用菜单**（Exec 用绝对路径，最可靠）。
+
+> 支持中文路径和空格。如果移动了文件夹，重新运行一次即可。
+> 卸载：`./install-desktop.sh --uninstall`
+
+**方式 2：便携版**
+
+直接用仓库里的 `GitHub-自动修复.desktop`，它用 `%k` 自定位，可以随文件夹移动：
+
+```bash
+chmod +x GitHub-自动修复.desktop
+# GNOME 还需右键 →「允许启动」
+```
+
+> ⚠️ 便携版的限制：如果路径含中文或空格，`%k` 会变成 URL 编码格式，可能定位失败。这种情况请用方式 1。
+
 > **依赖**
 > - Windows 10/11 + PowerShell 5.1 + `curl.exe`（系统自带）
 > - Linux/macOS + `bash` 4+ + `curl`
@@ -166,6 +193,8 @@ curl --resolve api.github.com:443:140.82.121.6    https://api.github.com   # 能
 | `fix-github.sh` | **Linux/macOS 主脚本** |
 | `proxy.js` | 本地 SNI 剥离代理（Node.js，两平台共用） |
 | `快速修复GitHub.bat` / `fix-github.bat` | Windows 双击启动器（自动提权） |
+| `install-desktop.sh` | Linux 桌面启动器安装脚本（生成 .desktop 到桌面+应用菜单） |
+| `GitHub-自动修复.desktop` | Linux 便携版启动器（`%k` 自定位，可随文件夹移动） |
 | `LICENSE` | MIT |
 
 ---

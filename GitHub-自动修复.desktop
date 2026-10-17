@@ -1,0 +1,32 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GitHub 自动修复
+GenericName=GitHub Access Fixer
+Comment=自动识别 DNS 污染 / IP 封锁 / SNI 阻断并修复 GitHub 访问
+Comment[en]=Auto-detect DNS pollution / IP blocking / SNI blocking and fix GitHub access
+Exec=bash -c 'p="%k"; p="${p#file://}"; cd "$(dirname "$p")" && sudo ./fix-github.sh; echo; read -p "按回车关闭窗口..."'
+Icon=utilities-terminal
+Terminal=true
+Categories=Network;Utility;
+Keywords=github;network;dns;hosts;gfw;proxy;
+StartupNotify=false
+
+# ------------------------------------------------------------
+# 【便携版说明】
+# 本文件使用 %k 自定位（自动找到自己所在目录），因此可以随文件夹
+# 一起复制/移动，无需修改任何路径。
+#
+# 使用方法：
+#   1. 把本文件和 fix-github.sh 放在同一个文件夹
+#   2. chmod +x 本文件
+#      右键 → 属性 → 勾选「允许作为程序执行」
+#      （GNOME 需要右键 →「允许启动」）
+#   3. 双击运行
+#
+# 已知限制：
+#   如果文件路径包含中文或空格，%k 会是 URL 编码格式（如 %E4%B8%AD），
+#   此时本文件可能无法正确定位。请改用 install-desktop.sh 安装：
+#       chmod +x install-desktop.sh && ./install-desktop.sh
+#   它会把 .desktop 生成到应用菜单（Exec 用绝对路径，无此问题）。
+# ------------------------------------------------------------
