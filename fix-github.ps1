@@ -278,20 +278,33 @@ function Invoke-ProxyConfig($state) {
     if ($proxyDomains.Count -eq 0 -or -not $hasNode) { return }
 
     Info "  配置 SNI 剥离代理（$($proxyDomains.Count) 个域名）..."
-    # 证书
+    # 证书：必须带 Basic Constraints CA:TRUE，否则浏览器判定「服务器证书无效」
     $needCert = $true
     if (Test-Path $pfxPath) {
-        $existing = Get-ChildItem 'Cert:\LocalMachine\Root' | Where-Object { $_.Subject -eq 'CN=Local GitHub Proxy' } | Select-Object -First 1
-        if ($existing -and $existing.NotAfter -gt (Get-Date).AddDays(30)) { $needCert = $false }
+        $existing = Get-ChildItem 'Cert:\LocalMachine\Root' -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Subject -match 'github\.com' } | Select-Object -First 1
+        if ($existing) {
+            $hasCa = $existing.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' }
+            if ($hasCa -and $existing.NotAfter -gt (Get-Date).AddDays(30)) { $needCert = $false }
+        }
     }
     if ($needCert) {
-        Get-ChildItem 'Cert:\LocalMachine\My', 'Cert:\LocalMachine\Root' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Subject -eq 'CN=Local GitHub Proxy' } | Remove-Item -Force -ErrorAction SilentlyContinue
+        # 彻底清理历史遗留的本地代理证书（多个同名证书会干扰浏览器信任判断）
+        foreach ($storeName in @('Root', 'My')) {
+            try {
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, 'LocalMachine')
+                $store.Open('ReadWrite')
+                $toRemove = @($store.Certificates | Where-Object { $_.Subject -match 'github\.com|gravatar\.com|CN=Local' })
+                foreach ($c in $toRemove) { try { $store.Remove($c) } catch { } }
+                $store.Close()
+            } catch { }
+        }
         $dnsNames = @()
         foreach ($d in $proxyDomains) { $dnsNames += $d; $dnsNames += "*.$d" }
         $cert = New-SelfSignedCertificate -DnsName $dnsNames -CertStoreLocation 'Cert:\LocalMachine\My' `
             -NotAfter (Get-Date).AddYears(10) -FriendlyName 'Local GitHub Proxy' `
-            -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 2048 -ErrorAction Stop
+            -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 2048 `
+            -TextExtension @('2.5.29.19={critical}{text}ca=1&pathlength=0') -ErrorAction Stop
         $secure = ConvertTo-SecureString -String $PFX_PASS -Force -AsPlainText
         Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $secure -ErrorAction Stop | Out-Null
         Export-Certificate -Cert $cert -FilePath $cerPath -ErrorAction Stop | Out-Null
