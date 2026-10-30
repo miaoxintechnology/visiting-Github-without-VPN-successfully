@@ -140,6 +140,13 @@ foreach ($f in $filesToRemove) {
         $deleted++
     }
 }
+# 删除自动安装的便携版 Node.js
+$nodeDir = Join-Path $script:WorkDir '.node'
+if (Test-Path $nodeDir) {
+    Remove-Item $nodeDir -Recurse -Force -ErrorAction SilentlyContinue
+    Good '  已删除便携版 Node.js (.node 目录)'
+    $deleted++
+}
 if ($deleted -eq 0) { Warn '  没有需要删除的配置文件' }
 
 # ---------- 5. 刷新 DNS ----------

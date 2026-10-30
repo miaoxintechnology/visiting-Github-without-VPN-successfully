@@ -110,6 +110,10 @@ for f in proxy-config.json proxy-cert.pfx proxy-cert.cer cert.pem key.pem proxy.
         rm -f "$SCRIPT_DIR/$f" && { good "  已删除: $f"; DELETED=$((DELETED+1)); }
     fi
 done
+# 删除自动安装的便携版 Node.js
+if [[ -d "$SCRIPT_DIR/.node" ]]; then
+    rm -rf "$SCRIPT_DIR/.node" && { good "  已删除便携版 Node.js (.node 目录)"; DELETED=$((DELETED+1)); }
+fi
 [[ $DELETED -eq 0 ]] && warn "  没有需要删除的配置文件" || good "  共删除 $DELETED 个文件"
 
 # ---------- 5. 删除 .desktop 启动器 ----------
