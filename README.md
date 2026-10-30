@@ -207,11 +207,23 @@ curl --resolve api.github.com:443:140.82.121.6    https://api.github.com   # 能
 | `fix-github.sh` | **Linux/macOS 主脚本** |
 | `proxy.js` | 本地 SNI 剥离代理（Node.js，两平台共用） |
 | `快速修复GitHub.bat` / `fix-github.bat` | Windows 双击修复启动器（自动提权） |
+| **`start-proxy.ps1`** / **`只启动代理.bat`** | **只启动代理**（不重新扫描，1~3 秒恢复） |
 | **`uninstall.ps1`** / **`一键回滚.bat`** | **Windows 一键回滚**（撤销所有改动） |
 | **`uninstall.sh`** | **Linux/macOS 一键回滚** |
 | `install-desktop.sh` | Linux 桌面启动器安装脚本（生成 .desktop 到桌面+应用菜单） |
 | `GitHub-自动修复.desktop` | Linux 便携版启动器（`%k` 自定位，可随文件夹移动） |
 | `LICENSE` | MIT |
+
+### 三个脚本的分工
+
+| 场景 | 用哪个 | 耗时 |
+|---|---|---|
+| **第一次用 / 又打不开了** | `快速修复GitHub.bat`（完整修复） | 1~3 分钟 |
+| **重启电脑后 / 代理掉了** | `只启动代理.bat`（只拉代理） | **1~3 秒** |
+| **不想用了** | `一键回滚.bat`（撤销一切） | 5~10 秒 |
+
+> `只启动代理` 不重新扫描 IP，直接按现有 `proxy-config.json` 把代理拉起来，所以很快。
+> 但如果 IP 已经失效（打开了还是不行），还是得跑完整的「快速修复GitHub.bat」。
 
 ---
 
