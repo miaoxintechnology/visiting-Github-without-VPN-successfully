@@ -195,7 +195,11 @@ function Find-IPs($hostname, $want, $suffixes, $mode, $maxTest) {
 }
 
 function Verify-Service($url, $useNoRevoke) {
-    $extra = if ($useNoRevoke) { @('--ssl-no-revoke') } else { @() }
+    # ★ 注意：必须用两段式赋值。若写成 $extra = if(...){@('x')}else{@()}，
+    #   PowerShell 会把单元素数组展开成 String，导致 @extra splatting 时
+    #   被拆成单个字符传给 curl，产生 "option -: is unknown" 而永远验证失败。
+    $extra = @()
+    if ($useNoRevoke) { $extra = @('--ssl-no-revoke') }
     $wait = if ($useNoRevoke) { 2 } else { 0 }
     $ok = 0; $bad = 0
     for ($r = 1; $r -le 3; $r++) {
