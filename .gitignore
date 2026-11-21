@@ -14,3 +14,11 @@ key.pem
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# v6 runtime state and secrets (DPAPI passphrase / cert pins) - never commit
+proxy-pass.dat
+install-state.json
+proxy-state.json
+logs/
+.node/
+*.log.*
