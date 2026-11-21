@@ -173,25 +173,39 @@ function Test-IpsNoSniBatch {
     param([string]$Hostname, [string[]]$Ips)
     if (-not $Ips -or $Ips.Count -eq 0) { return @() }
     $path = Get-TestPath $Hostname
-    $a = @(
-        '-s', '-o', 'NUL', '-w', '%{url_effective} %{http_code}\n',
-        '--connect-timeout', '2', '--max-time', '6', '-k',
-        '-Z', '--parallel-max', '16',
-        '-H', "Host: $Hostname", '-H', "User-Agent: $UA"
-    )
-    foreach ($ip in $Ips) { $a += @('-o', 'NUL', "https://$ip$path") }
-    $lines = @(& curl.exe @a 2>$null)
-    $hits = New-Object System.Collections.Generic.List[string]
-    foreach ($line in $lines) {
-        if ($line -match '^https://([0-9.]+)\S*\s+(\d{3})\s*$') {
-            $ip = $Matches[1]
-            $code = $Matches[2]
-            if (($code -eq '200' -or $code -eq '301' -or $code -eq '302') -and -not $hits.Contains($ip)) {
-                $hits.Add($ip)
+
+    # 兼容性：老版 curl（如 Win10 自带的 7.55）不支持 --parallel，会自动降级到 .NET 并发。
+    $curlExe = $null
+    $hasParallel = $false
+    try {
+        $curlExe = Resolve-Curl
+        $hasParallel = [bool]$script:CurlHasParallel
+    } catch { }
+
+    if ($curlExe -and $hasParallel) {
+        $a = @(
+            '-s', '-o', 'NUL', '-w', '%{url_effective} %{http_code}\n',
+            '--connect-timeout', '2', '--max-time', '6', '-k',
+            '-Z', '--parallel-max', '16',
+            '-H', "Host: $Hostname", '-H', "User-Agent: $UA"
+        )
+        foreach ($ip in $Ips) { $a += @('-o', 'NUL', "https://$ip$path") }
+        $lines = @(& $curlExe @a 2>$null)
+        $hits = New-Object System.Collections.Generic.List[string]
+        foreach ($line in $lines) {
+            if ($line -match '^https://([0-9.]+)\S*\s+(\d{3})\s*$') {
+                $ip = $Matches[1]
+                $code = $Matches[2]
+                if (($code -eq '200' -or $code -eq '301' -or $code -eq '302') -and -not $hits.Contains($ip)) {
+                    $hits.Add($ip)
+                }
             }
         }
+        return $hits.ToArray()
     }
-    return $hits.ToArray()
+
+    # 降级路径：用 .NET 并发（URL 用 IP，不发 SNI；Host 头指定域名）
+    return @(Test-NoSniBatchDotNet -Hostname $Hostname -Ips $Ips -Path $path -UserAgent $UA)
 }
 
 function Find-VerifiedIps {
@@ -380,15 +394,25 @@ function Start-ProxyViaTask {
 }
 
 function Test-AllServices {
+    # 用 HEAD + 轻量路径。
+    # 原因：GFW 对无 SNI 连接限速 ~15-25 KB/s，github.com 首页有 360KB，
+    # GET 要 20~30 秒，很容易超过验证超时被误判成「000 失败」；
+    # 而 favicon.ico（6KB）用 HEAD 只要 0.3 秒，能准确反映链路是否通。
     $checks = @(
-        @{ H = 'github.com'; P = '/octocat' },
-        @{ H = 'www.github.com'; P = '/octocat' },
+        @{ H = 'github.com'; P = '/favicon.ico' },
+        @{ H = 'www.github.com'; P = '/favicon.ico' },
         @{ H = 'api.github.com'; P = '/' },
         @{ H = 'codeload.github.com'; P = '/' }
     )
     $allPass = $true
     foreach ($c in $checks) {
-        $code = Get-HttpCode -Url ("https://{0}{1}" -f $c.H, $c.P) -MaxTime 25 -Headers @{ 'User-Agent' = $UA }
+        $url = "https://{0}{1}" -f $c.H, $c.P
+        $code = Invoke-Curl -Arguments @(
+            '-s', '-I', '-o', 'NUL', '-w', '%{http_code}',
+            '--connect-timeout', '5', '--max-time', '25',
+            '-H', "User-Agent: $UA", $url
+        )
+        if ($code -notmatch '^\d{3}$') { $code = '000' }
         if ($code -eq '200' -or $code -eq '301' -or $code -eq '302') {
             Good ("    {0,-24} {1}" -f $c.H, $code)
         } else {

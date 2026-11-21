@@ -165,15 +165,298 @@ function Set-PrivateFileAcl {
     & icacls.exe $Path /inheritance:r /grant:r "*${sid}:(R)" "*S-1-5-18:(R)" 2>&1 | Out-Null
 }
 
+# ---------------- curl 解析 ----------------
+# 兼容性说明：Windows 10 老版本自带的 curl 是 7.55.1（2017 年），
+# 不支持 --parallel / -Z（需要 7.66+）。这里自动挑选可用的最高版本 curl，
+# 并记录是否支持并行；不支持时上层会降级到 .NET 并发实现。
+function Resolve-Curl {
+    if ($script:CurlExe) { return $script:CurlExe }
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $cmd = Get-Command curl.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) { $candidates.Add($cmd.Source) }
+
+    # Git for Windows / scoop / chocolatey 常见安装位置。
+    # 注意顺序：msys64 的 curl 读不到 Windows 的 hosts（实测 github.com 解析失败），
+    # 所以排在最后，只有前面都不行时才用。
+    $extra = @(
+        "$env:ProgramFiles\Git\mingw64\bin\curl.exe",
+        "$env:ProgramFiles\Git\usr\bin\curl.exe",
+        "$env:ProgramFiles\Git\bin\curl.exe",
+        "${env:ProgramFiles(x86)}\Git\mingw64\bin\curl.exe",
+        "$env:USERPROFILE\scoop\apps\curl\current\bin\curl.exe",
+        "$env:ProgramData\chocolatey\bin\curl.exe",
+        'C:\msys64\ucrt64\bin\curl.exe',
+        'C:\msys64\mingw64\bin\curl.exe',
+        'C:\msys64\usr\bin\curl.exe'
+    )
+    foreach ($p in $extra) { if ($p) { $candidates.Add($p) } }
+
+    $best = $null; $bestVersion = [version]'0.0.0'; $bestParallel = $false
+    $seen = @{}
+    $parallelCandidates = New-Object System.Collections.Generic.List[object]
+    foreach ($p in $candidates) {
+        if (-not $p) { continue }
+        $key = $p.ToLower()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        try {
+            $verLine = (& $p --version 2>$null | Select-Object -First 1)
+            if ($verLine -match 'curl\s+(\d+)\.(\d+)\.(\d+)') {
+                $v = [version]("$($Matches[1]).$($Matches[2]).$($Matches[3])")
+                if ($v -ge [version]'7.66') {
+                    $parallelCandidates.Add([pscustomobject]@{ Path = $p; Version = $v })
+                } elseif ($v -gt $bestVersion) {
+                    $best = $p; $bestVersion = $v; $bestParallel = $false
+                }
+            }
+        } catch { }
+    }
+
+    # 逐个验证「支持并行」的候选是否真能联网，选版本最高的可用者。
+    # 踩过的坑：msys64 自带的 curl 8.22 版本最高、--parallel 也支持，
+    # 但它走 msys 自己的网络配置，连 github.com 返回 000；Git 自带的
+    # curl 8.21 才正常。所以必须实测连通性，不能只看版本号。
+    foreach ($cand in ($parallelCandidates | Sort-Object Version -Descending)) {
+        if (Test-CurlConnectivity -Exe $cand.Path) {
+            $best = $cand.Path; $bestVersion = $cand.Version; $bestParallel = $true
+            break
+        } else {
+            Write-Host ("[-] curl 不可用（连不上网络），已跳过：{0}" -f $cand.Path) -ForegroundColor DarkYellow
+        }
+    }
+    # 系统里没有支持并行的 curl → 自动下载便携版（放 .tools\curl，不污染系统）
+    # 若设置了 GH_ACCEL_NO_CURL_DOWNLOAD=1，则跳过下载，直接用 .NET 并发降级
+    if (-not $bestParallel -and -not $env:GH_ACCEL_NO_CURL_DOWNLOAD) {
+        $portable = Install-CurlPortable
+        if ($portable) {
+            $best = $portable
+            $bestParallel = $true
+            try {
+                $line = (& $portable --version 2>$null | Select-Object -First 1)
+                if ($line -match 'curl\s+(\d+)\.(\d+)\.(\d+)') {
+                    $bestVersion = [version]("$($Matches[1]).$($Matches[2]).$($Matches[3])")
+                }
+            } catch { }
+        }
+    }
+
+    if (-not $best -and $candidates.Count -gt 0) { $best = $candidates[0] }
+    if (-not $best) { $best = 'curl.exe'; $bestVersion = [version]'0.0.0' }
+
+    $script:CurlExe = $best
+    $script:CurlVersion = $bestVersion
+    $script:CurlHasParallel = $bestParallel
+    return $best
+}
+
+# 验证某个 curl 是否真能用：
+#   1) 基础网络正常（连 baidu，国内必达，不受 GitHub 封锁影响）
+#   2) 若 hosts 里已配置 github.com -> 127.0.0.1，要求它能正确读取该映射
+#      （msys64 的 curl 读不到 Windows hosts，实测 remote_ip 为空，
+#        会导致「代理装好但整条链路失效」，必须排除）
+function Test-CurlConnectivity {
+    param([string]$Exe)
+    try {
+        # 1) 基础网络
+        $code = (& $Exe -s -o NUL -w '%{http_code}' --connect-timeout 3 --max-time 8 'https://www.baidu.com/' 2>$null)
+        if ($code -notmatch '^[123]\d\d$') { return $false }
+
+        # 2) hosts 读取能力（仅在 hosts 已配置 GitHub 映射时检查）
+        $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+        if (Test-Path -LiteralPath $hostsPath) {
+            $mapped = @(Get-Content -LiteralPath $hostsPath -ErrorAction SilentlyContinue) |
+                      Where-Object { $_ -match '^\s*127\.0\.0\.1\s+github\.com\s*$' }
+            if ($mapped.Count -gt 0) {
+                $ip = (& $Exe -s -o NUL -w '%{remote_ip}' --connect-timeout 2 --max-time 5 `
+                       'https://github.com/favicon.ico' 2>$null)
+                if ($ip -ne '127.0.0.1') {
+                    Write-Host ("[-] curl 读不到 hosts 映射，已跳过：{0}" -f $Exe) -ForegroundColor DarkYellow
+                    return $false
+                }
+            }
+        }
+        return $true
+    } catch { return $false }
+}
+
+# 下载便携版 curl 到 .tools\curl（仅在系统里找不到支持 --parallel 的新版 curl 时使用）
+# 返回 curl.exe 路径，失败返回 $null。不写系统目录、不需要管理员、不改 PATH。
+function Install-CurlPortable {
+    param([switch]$Force)
+    $toolsDir = Join-Path $PSScriptRoot '.tools\curl'
+    $exePath = Join-Path $toolsDir 'bin\curl.exe'
+
+    if (-not $Force -and (Test-Path -LiteralPath $exePath)) {
+        try {
+            $line = (& $exePath --version 2>$null | Select-Object -First 1)
+            if ($line -match 'curl\s+(\d+)\.(\d+)') {
+                $v = [version]("$($Matches[1]).$($Matches[2])")
+                if ($v -ge [version]'7.66') { return $exePath }
+            }
+        } catch { }
+    }
+
+    try {
+        Write-Host '[*] 未找到支持 --parallel 的 curl，尝试自动下载便携版...' -ForegroundColor Cyan
+        Write-Host '    （国内下载约 1~4 分钟；若太慢可设 GH_ACCEL_NO_CURL_DOWNLOAD=1 跳过，改用 .NET 并发）' -ForegroundColor DarkGray
+
+        # 1) 解析 curl.se/windows 最新版下载地址
+        $page = Invoke-WebRequest -Uri 'https://curl.se/windows/' -UseBasicParsing -TimeoutSec 30
+        $verList = @([regex]::Matches($page.Content, 'dl-(\d+\.\d+\.\d+_\d+)/curl-\d+\.\d+\.\d+_\d+-win64-mingw\.zip') |
+                     ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        if ($verList.Count -eq 0) {
+            Write-Host '[-] 无法解析 curl 下载版本号' -ForegroundColor Yellow
+            return $null
+        }
+        $ver = $verList[0]
+        $url = "https://curl.se/windows/dl-$ver/curl-$ver-win64-mingw.zip"
+        Write-Host "    版本：$ver" -ForegroundColor DarkGray
+        Write-Host "    地址：$url" -ForegroundColor DarkGray
+
+        # 2) 下载
+        $zip = Join-Path $env:TEMP "curl-$ver.zip"
+        $oldProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -TimeoutSec 180 -UseBasicParsing -ErrorAction Stop
+        } finally { $ProgressPreference = $oldProgress }
+        if (-not (Test-Path -LiteralPath $zip) -or (Get-Item -LiteralPath $zip).Length -lt 500KB) {
+            Write-Host '[-] 下载失败或文件异常' -ForegroundColor Yellow
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            return $null
+        }
+
+        # 3) 解压（用系统自带 tar 优先，老系统用 Expand-Archive）
+        $tmpDir = Join-Path $env:TEMP ("curl-extract-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+        $extracted = $false
+        if (Get-Command tar.exe -ErrorAction SilentlyContinue) {
+            & tar.exe -xf $zip -C $tmpDir 2>$null
+            if ($LASTEXITCODE -eq 0) { $extracted = $true }
+        }
+        if (-not $extracted) {
+            try {
+                Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+                [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmpDir)
+                $extracted = $true
+            } catch {
+                Expand-Archive -Path $zip -DestinationPath $tmpDir -Force
+                $extracted = $true
+            }
+        }
+        if (-not $extracted) { throw '解压失败' }
+
+        # 4) 找到 curl.exe 并放到 .tools\curl\bin
+        $found = Get-ChildItem $tmpDir -Recurse -Filter 'curl.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $found) { throw '压缩包里没有 curl.exe' }
+
+        New-Item -ItemType Directory -Path (Join-Path $toolsDir 'bin') -Force | Out-Null
+        Copy-Item $found.FullName $exePath -Force
+        # mingw 版是静态链接，通常无依赖 DLL；若有则一并复制
+        Get-ChildItem $found.DirectoryName -Filter '*.dll' -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName (Join-Path $toolsDir 'bin') -Force }
+
+        # 5) 验证
+        $line2 = (& $exePath --version 2>$null | Select-Object -First 1)
+        if ($line2 -match 'curl\s+(\d+)\.(\d+)') {
+            $v2 = [version]("$($Matches[1]).$($Matches[2])")
+            if ($v2 -ge [version]'7.66') {
+                Write-Host "[+] 便携版 curl 已就绪：$exePath" -ForegroundColor Green
+                return $exePath
+            }
+        }
+        Write-Host '[-] 下载的 curl 版本仍不支持 --parallel' -ForegroundColor Yellow
+        return $null
+    } catch {
+        Write-Host "[-] 自动下载 curl 失败：$($_.Exception.Message)" -ForegroundColor Yellow
+        return $null
+    } finally {
+        Remove-Item (Join-Path $env:TEMP "curl-$ver.zip") -Force -ErrorAction SilentlyContinue
+        if ($tmpDir) { Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 # ---------------- 网络探测 ----------------
 function Invoke-Curl {
     param([string[]]$Arguments, [int]$TimeoutSec = 40)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $out = & curl.exe @Arguments 2>$null
+        $exe = Resolve-Curl
+        $out = & $exe @Arguments 2>$null
         return ("$out" -replace '\s+$', '')
     } finally { $ErrorActionPreference = $prev }
+}
+
+# 无 SNI 批量探测（.NET 并发实现，不依赖 curl 版本）
+# URL 用 IP，HttpWebRequest 对 IP 不发 SNI；Host 头指定目标域名，上游按域名返回内容。
+function Test-NoSniBatchDotNet {
+    param(
+        [string]$Hostname,
+        [string[]]$Ips,
+        [string]$Path = '/',
+        [string]$UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+        [int]$Batch = 20,
+        [int]$TimeoutMs = 7000
+    )
+    $hits = New-Object System.Collections.Generic.List[string]
+    if (-not $Ips -or $Ips.Count -eq 0) { return $hits.ToArray() }
+
+    $prevCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+    $prevProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+    try {
+        # 等价 curl -k：不校验上游证书（后续由 Get-NoSniCertProbe 单独严格校验）
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+        $total = $Ips.Count
+        for ($i = 0; $i -lt $total; $i += $Batch) {
+            $end = [Math]::Min($i + $Batch - 1, $total - 1)
+            $chunk = @($Ips[$i..$end])
+            $pending = New-Object System.Collections.Generic.List[object]
+            foreach ($ip in $chunk) {
+                try {
+                    $req = [System.Net.HttpWebRequest]::Create("https://$ip$Path")
+                    $req.Host = $Hostname
+                    $req.UserAgent = $UserAgent
+                    $req.Timeout = $TimeoutMs
+                    $req.ReadWriteTimeout = $TimeoutMs
+                    $req.AllowAutoRedirect = $false
+                    $req.Method = 'GET'
+                    $req.KeepAlive = $false
+                    $pending.Add([pscustomobject]@{
+                        Ip = $ip
+                        Req = $req
+                        Async = $req.BeginGetResponse($null, $null)
+                    })
+                } catch { }
+            }
+            foreach ($item in $pending) {
+                $code = 0
+                try {
+                    $resp = $item.Req.EndGetResponse($item.Async)
+                    try { $code = [int]$resp.StatusCode } finally { $resp.Close() }
+                } catch {
+                    # 301/302 会抛 WebException，但异常里带响应
+                    $webResp = $null
+                    try { $webResp = $_.Exception.Response } catch { }
+                    if ($webResp) {
+                        try { $code = [int]$webResp.StatusCode } catch { }
+                        try { $webResp.Close() } catch { }
+                    }
+                }
+                if ($code -eq 200 -or $code -eq 301 -or $code -eq 302) {
+                    if (-not $hits.Contains($item.Ip)) { $hits.Add($item.Ip) }
+                }
+            }
+        }
+    } finally {
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $prevCallback
+        [System.Net.ServicePointManager]::SecurityProtocol = $prevProtocol
+    }
+    return $hits.ToArray()
 }
 
 # 返回 HTTP 状态码字符串（失败返回 000）

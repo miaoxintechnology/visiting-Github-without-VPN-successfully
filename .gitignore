@@ -22,3 +22,6 @@ proxy-state.json
 logs/
 .node/
 *.log.*
+
+# v6 便携版依赖（自动下载的 Node / curl）
+.tools/

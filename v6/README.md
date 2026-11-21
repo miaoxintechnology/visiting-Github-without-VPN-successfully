@@ -1,6 +1,6 @@
-# GitHub 加速器 v6（Windows）
+# GitHub 加速器 v6（Windows / Linux / macOS）
 
-> 适用：Windows 10/11，在中国大陆网络下访问 `github.com` 遇到 **SNI 阻断 / DNS 污染** 的场景。
+> 适用：Windows 10/11、Linux（systemd 系）、macOS，在中国大陆网络下访问 `github.com` 遇到 **SNI 阻断 / DNS 污染** 的场景。
 > 本目录是 v6；旧版 v5 位于仓库的 [`../v5/`](../v5/README.md)，文件原样保留，随时可以退回去。
 
 ---
@@ -48,6 +48,8 @@ GFW 对 `github.com` 这个 **SNI** 做针对性阻断，而对「不带 SNI」�
 
 ## 三、文件清单
 
+### Windows
+
 | 文件 | 作用 |
 |---|---|
 | `快速修复GitHub.bat` / `fix-github.ps1` | 安装：扫描 IP → 建证书 → 写配置 → 装计划任务 → 起代理并验证 → 改 hosts → 端到端验证 |
@@ -57,6 +59,23 @@ GFW 对 `github.com` 这个 **SNI** 做针对性阻断，而对「不带 SNI」�
 | `run-proxy.ps1` | 计划任务调用的启动器：DPAPI 解口令 → 校验 PFX 指纹 → 前台跑 `proxy.js` |
 | `proxy.js` | 本地 HTTPS 代理（详见文件头注释） |
 | `common.ps1` | 公共库（日志、证书、hosts、计划任务、网络探测） |
+
+### Linux / macOS
+
+| 文件 | 作用 |
+|---|---|
+| `fix-github.sh` | 安装/修复（对应 `fix-github.ps1`） |
+| `start-proxy.sh` | 代理没起来时快速拉起 |
+| `uninstall.sh` | 一键回滚：停服务、删系统 CA、清 hosts、删文件并验证 |
+| `doctor.sh` | 只读体检 |
+| `install-desktop.sh` | 安装桌面启动器（4 个 .desktop：修复/启代理/体检/回滚） |
+| `common.sh` | 公共库（对应 `common.ps1`） |
+
+### 跨平台
+
+| 文件 | 作用 |
+|---|---|
+| `proxy.js` | 本地 HTTPS 代理，两平台共用（Windows 用 PFX，Linux/macOS 用 PEM） |
 
 运行期生成（回滚会删）：`proxy-config.json`、`proxy-cert.pfx`、`proxy-cert.cer`、`proxy-pass.dat`、`install-state.json`、`proxy.log`、`proxy-state.json`、`logs\`。
 
@@ -76,6 +95,45 @@ GFW 对 `github.com` 这个 **SNI** 做针对性阻断，而对「不带 SNI」�
 - **hosts 不会被改坏**（安装顺序是先验证后改 hosts）。
 - 会自动尝试恢复 v5 遗留代理，GitHub 保持可用。
 - 把报错发我，或先跑一次 `体检.bat`。
+
+### Linux / macOS 快速开始
+
+```bash
+cd v6
+chmod +x *.sh
+
+# 1) 先预览，不做任何修改
+sudo ./fix-github.sh --dry-run
+
+# 2) 正式安装
+sudo ./fix-github.sh
+
+# 3) 可选：装桌面启动器（4 个图标：修复/启代理/体检/回滚）
+./install-desktop.sh
+```
+
+其它命令：
+
+```bash
+sudo ./fix-github.sh --no-proxy      # 只做 hosts 直连（不装代理）
+sudo ./fix-github.sh --ips 8         # 每域名保留 8 个备用 IP
+sudo ./fix-github.sh --rounds 0      # 不达标时无限重试
+./start-proxy.sh                     # 代理掉了，快速拉起
+./doctor.sh                          # 只读体检
+sudo ./uninstall.sh                  # 一键回滚
+```
+
+依赖（**都会自动处理**）：
+- `bash` 4+ / `curl` —— 系统自带
+- `openssl` —— 缺了会用包管理器装
+- **Node.js** —— 没有会自动装（`apt`/`dnf`/`yum`/`pacman`/`zypper`，失败再下便携版到 `.tools/`）
+- **curl 版本**：老版 curl 不支持 `--parallel` 时会自动降级（Windows 版的 `-Z` 兼容问题已修）
+
+> Linux 与 Windows 的差异：
+> - 私钥用 **PEM + chmod 600**（对应 Windows 的 DPAPI 加密 PFX）
+> - 开机自启用 **systemd 服务**（macOS 用 launchd）
+> - 证书装到 `/usr/local/share/ca-certificates/`（RHEL 系用 `/etc/pki/ca-trust/`）
+> - hosts 是 `/etc/hosts`
 
 ---
 
