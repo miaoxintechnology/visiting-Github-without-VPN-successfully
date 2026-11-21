@@ -523,7 +523,11 @@ const server = https.createServer(serverOptions, (req, res) => {
   });
 });
 server.maxConnections = CONFIG.maxConnections;
-server.headersTimeout = 30000;
+// 关键：Node 默认 keepAliveTimeout=5s。CLI 客户端（如 gh 的 5 秒轮询）会在
+// 连接刚被服务端关闭时复用连接，导致 RST（"连接被强制关闭"）。放宽到 65s。
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+server.requestTimeout = 0;
 server.on('tlsClientError', (e) => log(`TLS 客户端握手失败：${e.message}`));
 server.on('clientError', (e, socket) => { try { socket.destroy(); } catch (err) {} });
 
