@@ -34,6 +34,7 @@ if ($DryRun) { $script:ForwardArgs += '-DryRun' }
 if ($KeepNode) { $script:ForwardArgs += '-KeepNode' }
 if ($CleanLegacy) { $script:ForwardArgs += '-CleanLegacy' }
 
+Show-AccelIcon
 Write-Host ''
 Write-Host ('=' * 62) -ForegroundColor Cyan
 Write-Host '  GitHub 加速器 v6 · 一键回滚' -ForegroundColor White

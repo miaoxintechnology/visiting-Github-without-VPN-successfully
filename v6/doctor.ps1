@@ -13,6 +13,7 @@ param([switch]$NoPause)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 
+Show-AccelIcon
 Write-Host ''
 Write-Host ('=' * 62) -ForegroundColor Cyan
 Write-Host ("  GitHub 加速器 v{0} · 体检（只读）" -f $script:DshAccelVersion) -ForegroundColor White

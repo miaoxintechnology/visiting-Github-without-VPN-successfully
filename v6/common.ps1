@@ -4,6 +4,52 @@
 # ============================================================
 
 $script:DshAccelVersion = '6.1.0'
+
+# ---------------- 启动图标 ----------------
+$script:AccelIcon = @'
+                      .-+*##@@@@@@@@##*+-.
+                 .=*#@@@@@@@@@@@@@@@@@@@@@@#*=.
+              -*@@@@@#*=:.            .:=*#@@@@@*-
+           :*@@@@#+:                        :+#@@@@*:
+         -#@@@#=                                =#@@@#-
+       :#@@@#:      =**=                =**=      :#@@@#:
+      *@@@#.      .#@@@@#.            .#@@@@#.      .#@@@*
+    .#@@#-       :#@@##@@#:          :#@@##@@#:       -#@@#.
+   :#@@#        =@@@#  #@@@=        =@@@#  #@@@=        #@@#:
+  .#@@#        +@@@*    *@@@+      +@@@*    *@@@+        #@@#.
+  #@@#        +@@@+      +@@@#=..=#@@@+      +@@@+        #@@#
+ *@@#.       :@@@*         *@@@@@@@@*         *@@@:       .#@@*
+.@@@*        #@@#            :=++=:            #@@#        *@@@.
+*@@@.       :@@@=                              =@@@:       .@@@*
+#@@#        *@@@                                @@@*        #@@#
+@@@#        #@@#                                #@@#        #@@@
+#@@#  :+=-: #@@#       #@#            #@#       #@@# :-=+:  #@@#
+#@@#   .:-++#@@#       -+:            :+-       #@@#++-:.   #@@#
++@@@.  .::--#@@@                                @@@#--::.  .@@@+
+ #@@# :+=---=@@@=          .#*    *#.          =@@@=---=+: #@@#
+ +@@@-    :-+#@@#           #@@@@@@#           #@@#+-:    -@@@+
+  #@@# .#*+-.:@@@*            .--.            *@@@:.-+*#. #@@#
+   #@@#.      =@@@+                          +@@@=      .#@@#
+    #@@#-      +@@@#                        #@@@+      -#@@#
+     #@@@*      -@@@#                      #@@@-      *@@@#
+      =#@@#=     #@@#                      #@@#     =#@@#=
+        *@@@#=   #@@#                      #@@#   =#@@@*
+          +@@@@#-#@@#   +*=#-      -#=*+   #@@#-#@@@@+
+            -#@@@@@@# ##*=-+*#*  *#*+-=*## #@@@@@@#-
+               =#@@@*  --. :--    --: .--  *@@@#=
+                  ..   =@@@@@.    .@@@@@=   ..
+                        +#@#-      -#@#+
+'@
+
+# 执行前打印图标（设置环境变量 GH_ACCEL_NO_ICON=1 可关闭，便于自动化解析输出）
+function Show-AccelIcon {
+    param([string]$Color = 'DarkCyan')
+    if ($env:GH_ACCEL_NO_ICON -eq '1') { return }
+    foreach ($line in ($script:AccelIcon -split "\r?\n")) {
+        Write-Host $line -ForegroundColor $Color
+    }
+    Write-Host ''
+}
 $script:WorkDir = $PSScriptRoot
 if (-not $script:WorkDir) { $script:WorkDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $script:TaskName = 'GitHubAcceleratorV6'
@@ -508,7 +554,7 @@ function Unregister-AccelTask {
 function Get-LegacyDirs {
     $dirs = @()
     $parent = Split-Path -Parent $script:WorkDir
-    foreach ($d in @($parent, (Join-Path $env:USERPROFILE 'Desktop'))) {
+    foreach ($d in @($parent, (Join-Path $parent 'v5'), (Join-Path $env:USERPROFILE 'Desktop'))) {
         if ($d -and (Test-Path (Join-Path $d 'proxy.js')) -and $d -ne $script:WorkDir) { $dirs += $d }
     }
     return ($dirs | Select-Object -Unique)

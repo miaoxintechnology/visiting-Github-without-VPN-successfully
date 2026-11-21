@@ -1,7 +1,7 @@
 # GitHub 加速器 v6（Windows）
 
 > 适用：Windows 10/11，在中国大陆网络下访问 `github.com` 遇到 **SNI 阻断 / DNS 污染** 的场景。
-> 本目录是 v6，独立于上级目录的 v5；v5 文件原样保留，随时可以退回去。
+> 本目录是 v6；旧版 v5 位于仓库的 [`../v5/`](../v5/README.md)，文件原样保留，随时可以退回去。
 
 ---
 
@@ -85,6 +85,7 @@ GFW 对 `github.com` 这个 **SNI** 做针对性阻断，而对「不带 SNI」�
 - **代理没起来**：双击 `只启动代理.bat`（不需要管理员）。
 - **排查问题**：双击 `体检.bat`，会给出链路是否完整。
 - **改了网络/DNS/换 IP 段**：重新跑一次 `快速修复GitHub.bat` 即可（会复用证书，只重扫 IP、重写配置和 hosts）。
+- **启动图标**：每次执行前会先打印一个猫形 ASCII 图标（64 列）；设置环境变量 `GH_ACCEL_NO_ICON=1` 可关闭（便于自动化解析输出）。
 
 ---
 
@@ -157,6 +158,8 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1 -CleanLegacy
 `start-proxy.ps1`：`-Restart`（先停再起）、`-NoPause`
 `uninstall.ps1`：`-DryRun`、`-KeepNode`、`-CleanLegacy`、`-NoPause`
 `doctor.ps1`：`-NoPause`
+
+> 环境变量 `GH_ACCEL_NO_ICON=1`：关闭启动图标。
 
 ---
 

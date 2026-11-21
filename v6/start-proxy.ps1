@@ -13,6 +13,7 @@ param([switch]$Restart, [switch]$NoPause)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 
+Show-AccelIcon
 Write-Host ''
 Write-Host '===== GitHub 加速器 v6 · 启动代理 =====' -ForegroundColor Cyan
 

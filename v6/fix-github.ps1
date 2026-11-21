@@ -55,6 +55,7 @@ $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
 $script:TcpLive = @()
 
 function Show-Banner {
+    Show-AccelIcon
     Write-Host ''
     Write-Host ('=' * 62) -ForegroundColor Cyan
     Write-Host ("  GitHub 加速器 v{0}  ·  多 IP + 开机自启 + 全程校验" -f $script:DshAccelVersion) -ForegroundColor White
